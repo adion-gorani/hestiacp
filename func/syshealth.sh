@@ -149,7 +149,7 @@ function syshealth_repair_web_config() {
 	get_domain_values 'web'
 	prev="DOMAIN"
 	for key in $known_keys; do
-		if [ -z "${!key}" ]; then
+		if [ -z "$key" ]; then
 			add_object_key 'web' 'DOMAIN' "$domain" "$key" "$prev"
 		fi
 		prev=$key
@@ -511,6 +511,11 @@ function syshealth_repair_system_config() {
 		$BIN/v-change-sys-config-value "SUBJECT_EMAIL" "{{subject}}"
 	fi
 
+	if [[ -z $(check_key_exists 'BACKUP_INCREMENTAL') ]]; then
+		echo "[ ! ] Adding missing variable to hestia.conf: BACKUP_INCREMENTAL ('no')"
+		$BIN/v-change-sys-config-value "BACKUP_INCREMENTAL" "no"
+	fi
+
 	if [[ -z $(check_key_exists 'TITLE') ]]; then
 		echo "[ ! ] Adding missing variable to hestia.conf: TITLE ('{{page}} - {{hostname}} - {{appname}}')"
 		$BIN/v-change-sys-config-value "TITLE" "{{page}} - {{hostname}} - {{appname}}"
@@ -538,7 +543,7 @@ function syshealth_repair_system_config() {
 		echo "[ ! ] Adding missing variable to hestia.conf: ROOT_USER ('admin')"
 		$BIN/v-change-sys-config-value "ROOT_USER" "admin"
 	fi
- 	if [[ -z $(check_key_exists 'DOMAINDIR_WRITABLE') ]]; then
+	if [[ -z $(check_key_exists 'DOMAINDIR_WRITABLE') ]]; then
 		echo "[ ! ] Adding missing variable to hestia.conf: DOMAINDIR_WRITABLE ('no')"
 		$BIN/v-change-sys-config-value "DOMAINDIR_WRITABLE" "no"
 	fi

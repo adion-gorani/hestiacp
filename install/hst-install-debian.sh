@@ -6,7 +6,7 @@
 # https://www.hestiacp.com/
 #
 # Currently Supported Versions:
-# Debian 10, 11
+# Debian 10, 11 12
 #
 # ======================================================== #
 
@@ -32,10 +32,14 @@ VERBOSE='no'
 
 # Define software versions
 HESTIA_INSTALL_VER='1.9.0~alpha'
-# Dependencies
-multiphp_v=("5.6" "7.0" "7.1" "7.2" "7.3" "7.4" "8.0" "8.1" "8.2")
-fpm_v="8.2"
-mariadb_v="10.11"
+# Supported PHP versions
+multiphp_v=("5.6" "7.0" "7.1" "7.2" "7.3" "7.4" "8.0" "8.1" "8.2" "8.3")
+# One of the following PHP versions is required for Roundcube / phpmyadmin
+multiphp_required=("7.3" "7.4" "8.0" "8.1" "8.2","8.3")
+# Default PHP version if none supplied
+fpm_v="8.3"
+# MariaDB version
+mariadb_v="11.4"
 
 # Defining software pack for all distros
 software="acl apache2 apache2-suexec-custom apache2-suexec-pristine apache2-utils awstats bc bind9 bsdmainutils bsdutils
@@ -46,7 +50,7 @@ software="acl apache2 apache2-suexec-custom apache2-suexec-pristine apache2-util
   php$fpm_v php$fpm_v-apcu php$fpm_v-bz2 php$fpm_v-cgi php$fpm_v-cli php$fpm_v-common php$fpm_v-curl php$fpm_v-gd
   php$fpm_v-imagick php$fpm_v-imap php$fpm_v-intl php$fpm_v-ldap php$fpm_v-mbstring php$fpm_v-mysql php$fpm_v-opcache
   php$fpm_v-pgsql php$fpm_v-pspell php$fpm_v-readline php$fpm_v-xml php$fpm_v-zip postgresql postgresql-contrib
-  proftpd-basic quota rrdtool rsyslog spamd sudo sysstat unrar-free unzip util-linux vim-common vsftpd xxd whois zip zstd"
+  proftpd-basic quota rrdtool rsyslog spamd sudo sysstat unrar-free unzip util-linux vim-common vsftpd xxd whois zip zstd jailkit restic"
 
 installer_dependencies="apt-transport-https ca-certificates curl dirmngr gnupg openssl wget"
 
@@ -70,6 +74,7 @@ help() {
   -i, --iptables          Install iptables      [yes|no]  default: yes
   -b, --fail2ban          Install Fail2Ban      [yes|no]  default: yes
   -q, --quota             Filesystem Quota      [yes|no]  default: no
+  -L, --resourcelimit     Resource Limitation   [yes|no]  default: no
   -W, --webterminal       Web Terminal          [yes|no]  default: no
   -d, --api               Activate API          [yes|no]  default: yes
   -r, --port              Change Backend Port             default: 8083
@@ -178,10 +183,14 @@ sort_config_file() {
 
 # todo add check for usernames that are blocked
 validate_username() {
-	if [[ "$username" =~ ^[a-z_]([a-z0-9_-]{0,31}|[a-z0-9_-]{0,30}\$)$ ]]; then
-		# Username valid
-		return 1
+	if [[ "$username" =~ ^[[:alnum:]][-|\.|_[:alnum:]]{0,28}[[:alnum:]]$ ]]; then
+		if [ -n "$(grep ^$username: /etc/passwd /etc/group)" ]; then
+			echo -e "\nUsername or Group allready exists please select a new user name or delete the user and / or group."
+		else
+			return 1
+		fi
 	else
+		echo -e "\nPlease use a valid username (ex. user)."
 		return 0
 	fi
 }
@@ -250,6 +259,7 @@ for arg; do
 		--fail2ban) args="${args}-b " ;;
 		--multiphp) args="${args}-o " ;;
 		--quota) args="${args}-q " ;;
+		--resourcelimit) args="${args}-L " ;;
 		--webterminal) args="${args}-W " ;;
 		--port) args="${args}-r " ;;
 		--lang) args="${args}-l " ;;
@@ -271,40 +281,78 @@ done
 eval set -- "$args"
 
 # Parsing arguments
-while getopts "a:w:v:j:k:m:M:g:d:x:z:Z:c:t:i:b:r:o:q:l:y:s:u:e:p:W:D:fh" Option; do
+while getopts "a:w:v:j:k:m:M:g:d:x:z:Z:c:t:i:b:r:o:q:L:l:y:s:u:e:p:W:D:fh" Option; do
 	case $Option in
-		a) apache=$OPTARG ;;      # Apache
-		w) phpfpm=$OPTARG ;;      # PHP-FPM
-		o) multiphp=$OPTARG ;;    # Multi-PHP
-		v) vsftpd=$OPTARG ;;      # Vsftpd
-		j) proftpd=$OPTARG ;;     # Proftpd
-		k) named=$OPTARG ;;       # Named
-		m) mysql=$OPTARG ;;       # MariaDB
-		M) mysql8=$OPTARG ;;      # MySQL
-		g) postgresql=$OPTARG ;;  # PostgreSQL
-		x) exim=$OPTARG ;;        # Exim
-		z) dovecot=$OPTARG ;;     # Dovecot
-		Z) sieve=$OPTARG ;;       # Sieve
-		c) clamd=$OPTARG ;;       # ClamAV
-		t) spamd=$OPTARG ;;       # SpamAssassin
-		i) iptables=$OPTARG ;;    # Iptables
-		b) fail2ban=$OPTARG ;;    # Fail2ban
-		q) quota=$OPTARG ;;       # FS Quota
-		W) webterminal=$OPTARG ;; # Web Terminal
-		r) port=$OPTARG ;;        # Backend Port
-		l) lang=$OPTARG ;;        # Language
-		d) api=$OPTARG ;;         # Activate API
-		y) interactive=$OPTARG ;; # Interactive install
-		s) servername=$OPTARG ;;  # Hostname
-		e) email=$OPTARG ;;       # Admin email
-		u) username=$OPTARG ;;    # Admin username
-		p) vpass=$OPTARG ;;       # Admin password
-		D) withdebs=$OPTARG ;;    # Hestia debs path
-		f) force='yes' ;;         # Force install
-		h) help ;;                # Help
-		*) help ;;                # Print help (default)
+		a) apache=$OPTARG ;;        # Apache
+		w) phpfpm=$OPTARG ;;        # PHP-FPM
+		o) multiphp=$OPTARG ;;      # Multi-PHP
+		v) vsftpd=$OPTARG ;;        # Vsftpd
+		j) proftpd=$OPTARG ;;       # Proftpd
+		k) named=$OPTARG ;;         # Named
+		m) mysql=$OPTARG ;;         # MariaDB
+		M) mysql8=$OPTARG ;;        # MySQL
+		g) postgresql=$OPTARG ;;    # PostgreSQL
+		x) exim=$OPTARG ;;          # Exim
+		z) dovecot=$OPTARG ;;       # Dovecot
+		Z) sieve=$OPTARG ;;         # Sieve
+		c) clamd=$OPTARG ;;         # ClamAV
+		t) spamd=$OPTARG ;;         # SpamAssassin
+		i) iptables=$OPTARG ;;      # Iptables
+		b) fail2ban=$OPTARG ;;      # Fail2ban
+		q) quota=$OPTARG ;;         # FS Quota
+		L) resourcelimit=$OPTARG ;; # Resource Limitaiton
+		W) webterminal=$OPTARG ;;   # Web Terminal
+		r) port=$OPTARG ;;          # Backend Port
+		l) lang=$OPTARG ;;          # Language
+		d) api=$OPTARG ;;           # Activate API
+		y) interactive=$OPTARG ;;   # Interactive install
+		s) servername=$OPTARG ;;    # Hostname
+		e) email=$OPTARG ;;         # Admin email
+		u) username=$OPTARG ;;      # Admin username
+		p) vpass=$OPTARG ;;         # Admin password
+		D) withdebs=$OPTARG ;;      # Hestia debs path
+		f) force='yes' ;;           # Force install
+		h) help ;;                  # Help
+		*) help ;;                  # Print help (default)
 	esac
 done
+
+if [ -n "$multiphp" ]; then
+	if [ "$multiphp" != 'no' ] && [ "$multiphp" != 'yes' ]; then
+		php_versions=$(echo $multiphp | tr ',' "\n")
+		multiphp_version=()
+		for php_version in "${php_versions[@]}"; do
+			if [[ $(echo "${multiphp_v[@]}" | fgrep -w "$php_version") ]]; then
+				multiphp_version=(${multiphp_version[@]} "$php_version")
+			else
+				echo "$php_version is not supported"
+				exit 1
+			fi
+		done
+		multiphp_v=()
+		for version in "${multiphp_version[@]}"; do
+			multiphp_v=(${multiphp_v[@]} $version)
+		done
+		fpm_old=$fpm_v
+		multiphp="yes"
+		fpm_v=$(printf "%s\n" "${multiphp_version[@]}" | sort -V | tail -n1)
+		fpm_last=$(printf "%s\n" "${multiphp_required[@]}" | sort -V | tail -n1)
+		# Allow Maintainer to set minimum fpm version to make sure phpmyadmin and roundcube keep working
+		if [[ -z $(echo "${multiphp_required[@]}" | fgrep -w $fpm_v) ]]; then
+			if version_ge $fpm_v $fpm_last; then
+				multiphp_version=(${multiphp_version[@]} $fpm_last)
+				fpm_v=$fpm_last
+			else
+				# Roundcube and PHPmyadmin doesn't support the version selected.
+				echo "Selected PHP versions are not supported any more by Dependencies..."
+				exit 1
+			fi
+		fi
+
+		software=$(echo "$software" | sed -e "s/php$fpm_old/php$fpm_v/g")
+
+	fi
+fi
 
 # Defining default software stack
 set_default_value 'nginx' 'yes'
@@ -333,6 +381,7 @@ fi
 set_default_value 'iptables' 'yes'
 set_default_value 'fail2ban' 'yes'
 set_default_value 'quota' 'no'
+set_default_value 'resourcelimit' 'no'
 set_default_value 'webterminal' 'no'
 set_default_value 'interactive' 'yes'
 set_default_value 'api' 'yes'
@@ -357,6 +406,7 @@ fi
 if [ "$apache" = 'no' ]; then
 	phpfpm='yes'
 fi
+
 if [ "$mysql" = 'yes' ] && [ "$mysql8" = 'yes' ]; then
 	mysql='no'
 fi
@@ -372,14 +422,6 @@ fi
 
 if [ -d "/usr/local/hestia" ]; then
 	check_result 1 "Hestia install detected. Unable to continue"
-fi
-
-# Checking $username user account
-if [ -n "$(grep ^$username: /etc/passwd /etc/group)" ] && [ -z "$force" ]; then
-	echo "Please remove $username user account before proceeding."
-	echo 'If you want to do it automatically run installer with -f option:'
-	echo -e "Example: bash $0 --force\n"
-	check_result 1 "User $username exists"
 fi
 
 # Clear the screen once launch permissions have been verified
@@ -444,7 +486,7 @@ if [ -n "$conflicts" ] && [ -z "$force" ]; then
 	echo
 	echo '!!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!! !!!'
 	echo
-	read -p 'Would you like to remove the conflicting packages? [y/n] ' answer
+	read -p 'Would you like to remove the conflicting packages? [y/N] ' answer
 	if [ "$answer" = 'y' ] || [ "$answer" = 'Y' ]; then
 		apt-get -qq purge $conflicts -y
 		check_result $? 'apt-get remove failed'
@@ -567,7 +609,11 @@ if [ "$phpfpm" = 'yes' ] && [ "$multiphp" = 'no' ]; then
 fi
 if [ "$multiphp" = 'yes' ]; then
 	phpfpm='yes'
-	echo '   - Multi-PHP Environment'
+	echo -n '   - Multi-PHP Environment: Version'
+	for version in "${multiphp_v[@]}"; do
+		echo -n " php$version"
+	done
+	echo ''
 fi
 
 # DNS stack
@@ -637,7 +683,7 @@ echo -e "\n"
 
 # Asking for confirmation to proceed
 if [ "$interactive" = 'yes' ]; then
-	read -p 'Would you like to continue with the installation? [Y/N]: ' answer
+	read -p 'Would you like to continue with the installation? [y/N]: ' answer
 	if [ "$answer" != 'y' ] && [ "$answer" != 'Y' ]; then
 		echo 'Goodbye'
 		exit 1
@@ -645,15 +691,12 @@ if [ "$interactive" = 'yes' ]; then
 fi
 
 #Validate Username / Password / Email / Hostname even when interactive = no
-# Asking for contact email
 if [ -z "$username" ]; then
 	while validate_username; do
-		echo -e "\nPlease use a valid username (ex. user)."
 		read -p 'Please enter administrator username: ' username
 	done
 else
 	if validate_username; then
-		echo "Please use a valid username (ex. user)."
 		exit 1
 	fi
 fi
@@ -814,7 +857,7 @@ if [ "$mysql8" = 'yes' ]; then
 	GNUPGHOME="$(mktemp -d)"
 	export GNUPGHOME
 	for keyserver in $(shuf -e ha.pool.sks-keyservers.net hkp://p80.pool.sks-keyservers.net:80 keyserver.ubuntu.com hkp://keyserver.ubuntu.com:80); do
-		gpg --no-default-keyring --keyring /usr/share/keyrings/mysql-keyring.gpg --keyserver "${keyserver}" --recv-keys "467B942D3A79BD29" > /dev/null 2>&1 && break
+		gpg --no-default-keyring --keyring /usr/share/keyrings/mysql-keyring.gpg --keyserver "${keyserver}" --recv-keys "B7B3B788A8D3785C" > /dev/null 2>&1 && break
 	done
 fi
 
@@ -823,11 +866,13 @@ echo "[ * ] Hestia Control Panel"
 echo "deb [arch=$ARCH signed-by=/usr/share/keyrings/hestia-keyring.gpg] https://$RHOST/ $codename main" > $apt/hestia.list
 gpg --no-default-keyring --keyring /usr/share/keyrings/hestia-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys A189E93654F0B0E5 > /dev/null 2>&1
 
-# Installing NodeJS 20.x repo
-echo "[ * ] NodeJS 20.x"
-echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x $codename main" > $apt/nodesource.list
-echo "deb-src [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x $codename main" >> $apt/nodesource.list
-curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor | tee /usr/share/keyrings/nodesource.gpg > /dev/null 2>&1
+# Detect if nodejs is allready installed if not add the repo
+echo "[ * ] Node.js 20.x"
+if [ -z $(which "node") ]; then
+	curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+else
+	echo "- Node.js is already installed"
+fi
 
 # Installing PostgreSQL repo
 if [ "$postgresql" = 'yes' ]; then
@@ -1327,6 +1372,13 @@ else
 	write_config_value "DISK_QUOTA" "no"
 fi
 
+# Resource limitation
+if [ "$resourcelimit" = 'yes' ]; then
+	write_config_value "RESOURCES_LIMIT" "yes"
+else
+	write_config_value "RESOURCES_LIMIT" "no"
+fi
+
 write_config_value "WEB_TERMINAL_PORT" "8085"
 
 # Backups
@@ -1455,11 +1507,16 @@ echo "[ * ] Enabling SFTP jail..."
 $HESTIA/bin/v-add-sys-sftp-jail > /dev/null 2>&1
 check_result $? "can't enable sftp jail"
 
+# Enable ssh jail
+echo "[ * ] Enabling SSH jail..."
+$HESTIA/bin/v-add-sys-ssh-jail > /dev/null 2>&1
+check_result $? "can't enable ssh jail"
+
 # Adding Hestia admin account
 echo "[ * ] Creating default admin account..."
 $HESTIA/bin/v-add-user "$username" "$vpass" "$email" "default" "System Administrator"
 check_result $? "can't create admin user"
-$HESTIA/bin/v-change-user-shell "$username" nologin
+$HESTIA/bin/v-change-user-shell "$username" nologin no
 $HESTIA/bin/v-change-user-role "$username" admin
 $HESTIA/bin/v-change-user-language "$username" "$lang"
 $HESTIA/bin/v-change-sys-config-value 'POLICY_SYSTEM_PROTECTED_ADMIN' 'yes'
@@ -1545,6 +1602,7 @@ if [ "$apache" = 'yes' ]; then
 	a2enmod suexec > /dev/null 2>&1
 	a2enmod ssl > /dev/null 2>&1
 	a2enmod actions > /dev/null 2>&1
+	a2enmod headers > /dev/null 2>&1
 	a2dismod --quiet status > /dev/null 2>&1
 	a2enmod --quiet hestia-status > /dev/null 2>&1
 
@@ -1691,8 +1749,8 @@ if [ "$mysql" = 'yes' ] || [ "$mysql8" = 'yes' ]; then
 	fi
 
 	if [ "$mysql_type" = 'MariaDB' ]; then
-		# Run mysql_install_db
-		mysql_install_db >> $LOG
+		# Run mariadb-install-db
+		mariadb-install-db >> $LOG
 	fi
 
 	# Remove symbolic link
@@ -1785,14 +1843,14 @@ if [ "$mysql" = 'yes' ] || [ "$mysql8" = 'yes' ]; then
 	cp -f $HESTIA_INSTALL_DIR/phpmyadmin/config.inc.php /etc/phpmyadmin/
 	mkdir -p /var/lib/phpmyadmin/tmp
 	chmod 770 /var/lib/phpmyadmin/tmp
-	chown root:www-data /usr/share/phpmyadmin/tmp
+	chown root:hestiamail /usr/share/phpmyadmin/tmp
 
 	# Set config and log directory
 	sed -i "s|'configFile' => ROOT_PATH . 'config.inc.php',|'configFile' => '/etc/phpmyadmin/config.inc.php',|g" /usr/share/phpmyadmin/libraries/vendor_config.php
 
 	# Create temporary folder and change permission
 	chmod 770 /usr/share/phpmyadmin/tmp
-	chown root:www-data /usr/share/phpmyadmin/tmp
+	chown root:hestiamail /usr/share/phpmyadmin/tmp
 
 	# Generate blow fish
 	blowfish=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
@@ -1945,7 +2003,9 @@ if [ "$dovecot" = 'yes' ]; then
 	cp -f $HESTIA_INSTALL_DIR/logrotate/dovecot /etc/logrotate.d/
 	rm -f /etc/dovecot/conf.d/15-mailboxes.conf
 	chown -R root:root /etc/dovecot*
-
+	touch /var/log/dovecot.log
+	chown -R dovecot:mail /var/log/dovecot.log
+	chmod 660 /var/log/dovecot.log
 	#Alter config for 2.2
 	version=$(dovecot --version | cut -f -2 -d .)
 	if [ "$version" = "2.2" ]; then
@@ -2123,6 +2183,7 @@ if [ "$sieve" = 'yes' ]; then
 	sed -i "s/address_pipe:/dovecot_virtual_delivery:\n  driver = pipe\n  command = \/usr\/lib\/dovecot\/dovecot-lda -e -d \${extract{1}{:}{\${lookup{\$local_part}lsearch{\/etc\/exim4\/domains\/\${lookup{\$domain}dsearch{\/etc\/exim4\/domains\/}}\/accounts}}}}@\${lookup{\$domain}dsearch{\/etc\/exim4\/domains\/}}\n  delivery_date_add\n  envelope_to_add\n  return_path_add\n  log_output = true\n  log_defer_output = true\n  user = \${extract{2}{:}{\${lookup{\$local_part}lsearch{\/etc\/exim4\/domains\/\${lookup{\$domain}dsearch{\/etc\/exim4\/domains\/}}\/passwd}}}}\n  group = mail\n  return_output\n\naddress_pipe:/g" /etc/exim4/exim4.conf.template
 
 	# Permission changes
+	touch /var/log/dovecot.log
 	chown -R dovecot:mail /var/log/dovecot.log
 	chmod 660 /var/log/dovecot.log
 
@@ -2131,11 +2192,12 @@ if [ "$sieve" = 'yes' ]; then
 		mkdir -p $RC_CONFIG_DIR/plugins/managesieve
 		cp -f $HESTIA_COMMON_DIR/roundcube/plugins/config_managesieve.inc.php $RC_CONFIG_DIR/plugins/managesieve/config.inc.php
 		ln -s $RC_CONFIG_DIR/plugins/managesieve/config.inc.php $RC_INSTALL_DIR/plugins/managesieve/config.inc.php
-		chown -R root:www-data $RC_CONFIG_DIR/
+		chown -R hestiamail:www-data $RC_CONFIG_DIR/
 		chmod 751 -R $RC_CONFIG_DIR
 		chmod 644 $RC_CONFIG_DIR/*.php
 		chmod 644 $RC_CONFIG_DIR/plugins/managesieve/config.inc.php
 		sed -i "s/\"archive\"/\"archive\", \"managesieve\"/g" $RC_CONFIG_DIR/config.inc.php
+		chmod 640 $RC_CONFIG_DIR/config.inc.php
 	fi
 
 	# Restart Dovecot and exim4
@@ -2187,8 +2249,9 @@ $HESTIA/bin/v-add-sys-filemanager quiet
 echo "[ * ] Configuring PHP dependencies..."
 $HESTIA/bin/v-add-sys-dependencies quiet
 
-echo "[ * ] Installing Rclone..."
+echo "[ * ] Installing Rclone & Update Restic ..."
 curl -s https://rclone.org/install.sh | bash > /dev/null 2>&1
+restic self-update > /dev/null 2>&1
 
 #----------------------------------------------------------#
 #                   Configure IP                           #

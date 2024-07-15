@@ -96,19 +96,10 @@
 	}
 }
 
-/* Spinner
+/* Box collapse component
    ========================================================================== */
 
-.spinner-overlay {
-	& .fas {
-		box-shadow: 0 2px 11px 0 rgb(0 0 0 / 50%);
-	}
-}
-
-/* Collapse component
-   ========================================================================== */
-
-.collapse-header {
+.box-collapse-header {
 	background: #fafafa;
 	box-shadow: none;
 }
@@ -177,8 +168,8 @@
 /* Login
    ========================================================================== */
 
-.body-login,
-.body-reset {
+.page-login,
+.page-reset {
 	background: #5f7eb3;
 }
 

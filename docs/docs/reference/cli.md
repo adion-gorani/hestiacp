@@ -630,9 +630,9 @@ add webmail support for a domain
 **Examples**:
 
 ```bash
-v-add-sys-webmail user domain.com
-example: v-add-sys-webmail user domain.com snappymail
-example: v-add-sys-webmail user domain.com roundcube
+v-add-mail-domain-webmail user domain.com
+example: v-add-mail-domain-webmail user domain.com snappymail
+example: v-add-mail-domain-webmail user domain.com roundcube
 ```
 
 This function enables webmail client for a mail domain.
@@ -1135,7 +1135,7 @@ adding ssl for domain
 **Examples**:
 
 ```bash
-v-add-web-domain-ssl admin example.com /home/admin/conf/example.com/web
+v-add-web-domain-ssl admin example.com /home/admin/conf/web/example.com
 ```
 
 This function turns on SSL support for a domain. Parameter ssl_dir is a path
@@ -1270,7 +1270,7 @@ change cron job
 **Examples**:
 
 ```bash
-v-change-cron-job admin 7 * * * * * * /usr/bin/uptime
+v-change-cron-job admin 7 * * * * * /usr/bin/uptime
 ```
 
 This function is used for changing existing job. It fully replace job
@@ -2677,7 +2677,7 @@ deletes temp database user
 **Examples**:
 
 ```bash
-v-add-database-temp-user wordress hestia_sso_user mysql
+v-delete-database-temp-user wordpress hestia_sso_user mysql
 ```
 
 Revokes "temp user" access to a database and removes the user
@@ -4055,6 +4055,30 @@ v-import-cpanel /backup/backup.tar.gz yes
 
 Based on sk-import-cpanel-backup-to-vestacp
 Credits: Maks Usmanov (skamasle) and contributors:
+Thanks to <https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/graphs/contributors>
+
+## v-import-directadmin
+
+[Source](https://github.com/hestiacp/hestiacp/blob/release/bin/v-import-directadmin)
+
+Import DirectAdmin backup to a new user
+
+**Examples**:
+
+```bash
+v-import-directadmin /backup/backup.tar.gz
+```
+
+What will be imported from DirectAdmin backups:
+
+1. The user account information
+2. The domains structure included all the files from `public_html` and/or `private_html`
+3. All databases
+   - **WARNING**: Only the first user with password will be imported because of HestiCP limits.
+4. All the e-mail accounts including the e-mails.
+
+Based on sk-da-importer and v-import-cpanel
+Credits: Maks Usmanov (skamasle), Jaap Marcus (jaapmarcus) and contributors:
 Thanks to <https://github.com/Skamasle/sk-import-cpanel-backup-to-vestacp/graphs/contributors>
 
 ## v-insert-dns-domain

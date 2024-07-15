@@ -12,10 +12,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        uses: actions/checkout@v4
         if: github.repository == 'hestiacp/hestiacp'
       - name: crowdin action
-        uses: crowdin/github-action@95174a28ceab36cf33d56fd3f7ada7a466bafb18 # v1
+        uses: crowdin/github-action@v2
         if: github.repository == 'hestiacp/hestiacp'
         with:
           upload_sources: true

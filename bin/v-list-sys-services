@@ -102,11 +102,6 @@ get_srv_state() {
 		pids=$(systemctl show $name.service | grep '^MainPID=' | cut -f2 -d=)
 	fi
 
-	# Prevent from an SSH false positive when there is a TTY or SFTP connection but service is down
-	if [ "$name" == 'ssh' ] && [ "$(systemctl show sshd.service | grep 'SubState=' | cut -f2 -d=)" != "running" ]; then
-		pids=''
-	fi
-
 	# Checking pid
 	if [ -n "$pids" ]; then
 		if [[ "$used_pgrep" -eq 1 ]]; then
@@ -263,8 +258,8 @@ if [ -n "$DB_SYSTEM" ] && [ "$DB_SYSTEM" != 'remote' ]; then
 				if [ -f $mysql ]; then
 					mariadb_v=$($mysql -V | awk 'NR==1{print $5}')
 					if [[ $mariadb_v =~ $mariadb_string ]]; then
-						mariadb_v=$(echo $mariadb_v | cut -f2 -d'.')
-						if [ $mariadb_v -le "4" ]; then
+						mariadb_v=$(echo $mariadb_v | awk -F "." '{ print $1 $2 }')
+						if [ $mariadb_v -le "104" ]; then
 							service='mariadb'
 							proc_name='mysqld'
 						fi

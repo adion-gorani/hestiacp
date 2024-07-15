@@ -10,6 +10,15 @@ Execute the following script and follow the instructions:
 bash /usr/local/hestia/install/upgrade/manual/configure-server-smtp.sh
 ```
 
+The script will ask you for the following SMTP parameters:
+
+- Host (e.g. `smtp.example.com`)
+- Port (e.g. `25`, `465` or `587`)
+- Security (e.g. `STARTTLS`)
+- Username
+- Password
+- Email Address (i.e. the sender address).
+
 ## I am unable to send email
 
 First, check that port 25 is open for outgoing traffic. A lot of providers block port 25 by default to combat spam.
@@ -35,7 +44,7 @@ If not, you have 2 options:
 2. Setup a mail relay under the mail domain settings or set it up generally for the server in system settings. For this you need to use an SMTP relay service like:
    - [Amazon SES](https://aws.amazon.com/ses/)
    - [SMTP2GO](https://www.smtp2go.com)
-   - [Sendinblue](https://www.sendinblue.com)
+   - [Brevo](https://www.brevo.com/)
 
 ## What is an SMTP relay service and how to set it up
 
@@ -134,14 +143,34 @@ Open port 4190 in the firewall. [Read the firewall documentation](./firewall).
 
 ## How can I enable ManageSieve for Snappymail?
 
-Edit `/etc/snappymail/data/_data_/_default_/domains/default.ini` and modify the following settings:
+Edit `/etc/snappymail/data/_data_/_default_/domains/default.json` and modify the following settings:
 
-```bash
-sieve_use = On
-sieve_allow_raw = Off
-sieve_host = "localhost"
-sieve_port = 4190
-sieve_secure = "None"
+```json
+"Sieve": {
+	"host": "localhost",
+	"port": 4190,
+	"type": 0,
+	"timeout": 10,
+	"shortLogin": false,
+	"lowerLogin": true,
+	"sasl": [
+		"SCRAM-SHA3-512",
+		"SCRAM-SHA-512",
+		"SCRAM-SHA-256",
+		"SCRAM-SHA-1",
+		"PLAIN",
+		"LOGIN"
+	],
+	"ssl": {
+		"verify_peer": false,
+		"verify_peer_name": false,
+		"allow_self_signed": false,
+		"SNI_enabled": true,
+		"disable_compression": true,
+		"security_level": 1
+	},
+	"enabled": false # Change this to true
+},
 ```
 
 ## Oracle Cloud + SMTP relay
